@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Pixel Art – Générateur de fiches (Cycle 3)</title>
+<style>
+  :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --fg:#e5e7eb; --accent:#22c55e; --accent2:#38bdf8; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;color:var(--fg);background:linear-gradient(180deg,#0b1220,#0f172a 40%)}
+  header{padding:18px 20px;border-bottom:1px solid #1f2937;background:#0b1220;position:sticky;top:0;z-index:2}
+  header h1{font-size:20px;margin:0}
+  .wrap{display:grid;gap:16px;padding:16px;grid-template-columns:520px 1fr;align-items:start}
+  .panel{background:rgba(17,24,39,.75);backdrop-filter:saturate(120%) blur(6px);border:1px solid #1f2937;border-radius:16px;padding:14px;overflow:visible}
+  .panel h2{font-size:16px;margin:0 0 8px}
+  .row{display:flex;gap:10px;align-items:center;margin:8px 0}
+  .row label{flex:0 0 260px;color:var(--muted);font-size:13px;white-space:normal;line-height:1.2}
+  .row input[type="number"], .row input[type="text"], .row select{flex:1;background:#0b1220;border:1px solid #1f2937;border-radius:10px;padding:8px;color:var(--fg)}
+  .row input[type="range"]{flex:1}
+  .row small{color:#9ca3af}
+  .btn{background:linear-gradient(180deg,var(--accent),#16a34a);border:none;color:#051b11;padding:10px 14px;border-radius:12px;font-weight:700;cursor:pointer}
+  .btn.sub{background:linear-gradient(180deg,var(--accent2),#0ea5e9);color:#06202d}
+  .btn.ghost{background:#111827;border:1px solid #1f2937;color:#e5e7eb}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  canvas{background:#fff;border-radius:12px;border:1px solid #e5e7eb;image-rendering:pixelated}
+  .legend{font-size:12px;display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;overflow:visible;max-width:100%}
+  .chip{display:flex;align-items:center;gap:6px;background:#0b1220;border:1px solid #1f2937;border-radius:999px;padding:4px 8px}
+  .sw{width:14px;height:14px;border-radius:3px;border:1px solid #0002}
+  .footer{color:#94a3b8;font-size:12px;margin-top:8px}
+  .paletteList{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .palRow{display:grid;grid-template-columns:28px 52px 1fr auto;gap:8px;align-items:center}
+  .palRow .letter{font-weight:700;text-align:center;background:#0b1220;border:1px solid #1f2937;border-radius:8px;padding:6px 0}
+  .palRow button{padding:8px 10px;border-radius:10px;border:1px solid #1f2937;background:#111827;color:#e5e7eb;cursor:pointer}
+  .subgrid{display:grid;grid-template-columns:1fr;gap:12px}
+  .divider{height:1px;background:#1f2937;margin:12px 0}
+  .hide{display:none !important}
+  #origCanvas{background:#111827;border-radius:12px;border:1px solid #1f2937;max-width:100%}
+  #fileName{color:#cbd5e1;font-size:12px}
+  #previewGrid>div{overflow:visible}
+  @media (max-width: 1200px){ .wrap{grid-template-columns:1fr} .grid{grid-template-columns:1fr} }
+  @media print{ header,.controls,.footer,details{display:none} body{background:#fff} .wrap{grid-template-columns:1fr} .panel{border:none} canvas{border:none} }
+</style>
+</head>
+<body>
+<header><h1>🧩 Générateur Pixel‑Art – Fiche “Cycle 3” (palette auto, lettres éditables)</h1></header>
+
+<div class="wrap">
+  <section class="panel controls">
+    <h2>⚙️ Paramètres</h2>
+
+    <details style="margin-bottom:10px">
+      <summary>❓ Aide & protocole d’usage</summary>
+      <p>1) Charge une image → la palette peut être <b>recalculée automatiquement</b> (k-means déterministe) selon le nombre de couleurs.</p>
+      <p>2) Modifier une couleur recolore uniquement ses cases. Ajouter/Supprimer une couleur <b>recalcule toute la palette</b> et réaffecte les cases.</p>
+      <p>3) <b>Contour noir gras (prétraitement)</b> s’applique sur l’image d’origine avant pixelisation (résultat stable).</p>
+      <p>4) Clique une case pour lui réaffecter la <b>lettre active</b> (et donc la couleur) en direct.</p>
+    </details>
+
+    <div class="row">
+      <label for="file">Image à pixelliser</label>
+      <div style="display:flex;gap:8px;align-items:center;flex:1">
+        <input id="file" type="file" accept="image/*" style="flex:1" />
+        <button class="btn ghost" id="reprocessBtn" title="Recalculer avec les mêmes réglages">Relancer la pixelisation</button>
+      </div>
+    </div>
+    <div class="row"><label>Fichier</label><div id="fileName">Aucun fichier</div></div>
+
+    <div class="row">
+      <label>Colonnes <small id="colsOut">32</small></label>
+      <input id="cols" type="range" min="8" max="80" value="32" />
+    </div>
+
+    <div class="row">
+      <label>Lignes <small id="rowsOut">32</small></label>
+      <input id="rows" type="range" min="8" max="80" value="32" />
+    </div>
+
+    <div class="row">
+      <label>Taille cellule (px)</label>
+      <input id="cell" type="number" value="20" min="6" max="40" />
+    </div>
+
+    <div class="row">
+      <label>Épaisseur grille</label>
+      <input id="gridStroke" type="number" value="1" min="0" max="3" />
+    </div>
+
+    <div class="row">
+      <label>Contour de chaque case (px)</label>
+      <input id="cellStroke" type="number" value="0" min="0" max="3" />
+    </div>
+
+    <div class="row">
+      <label>Couleur contour</label>
+      <input id="cellStrokeColor" type="color" value="#000000" />
+    </div>
+
+    <div class="row">
+      <label>Contour noir gras (prétraitement)</label>
+      <input id="preOutline" type="range" min="0" max="6" value="0" />
+    </div>
+
+    <div class="row">
+      <label>Coloriage activé</label>
+      <input id="paintOn" type="checkbox" checked />
+    </div>
+
+    <div class="row">
+      <label>Vue double (couleurs + lettres)</label>
+      <input id="dualView" type="checkbox" checked />
+    </div>
+
+    <div class="row hide" id="singleViewRow">
+      <label>Vue simple</label>
+      <select id="singleView">
+        <option value="letters">Lettres</option>
+        <option value="colors">Couleurs</option>
+      </select>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="subgrid">
+      <div>
+        <h2>🔤 Lettres (dans la grille)</h2>
+        <div class="row"><label>Afficher les lettres</label><input id="showLetters" type="checkbox" checked /></div>
+        <div class="row"><label>Police</label>
+          <select id="letterFontSelect">
+            <option value="ui-sans-serif, system-ui">Sans (UI)</option>
+            <option value="Georgia, serif">Serif classique (Georgia)</option>
+            <option value="'Times New Roman', Times, serif">Serif (Times New Roman)</option>
+            <option value="'Courier New', Courier, monospace">Monospace (Courier New)</option>
+            <option value="'Comic Sans MS', 'Comic Sans', cursive">Manuscrite (Comic Sans)</option>
+            <option value="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif">Affiche (Impact)</option>
+            <option value="'Trebuchet MS', Helvetica, sans-serif">Didact (Trebuchet)</option>
+          </select>
+        </div>
+        <div class="row"><label>Taille lettres (% de la case)</label><input id="letterScale" type="range" min="30" max="100" value="55" /></div>
+        <div class="row"><label>Couleur lettres</label><input id="letterColor" type="color" value="#111827" /></div>
+        <div class="row"><label>Gras</label><input id="letterBold" type="checkbox" /></div>
+        <div class="row"><label>Italique</label><input id="letterItalic" type="checkbox" /></div>
+        <div class="row"><label>Taille texte de la palette (px)</label><input id="legendSize" type="range" min="10" max="28" value="12" /></div>
+        <div class="row"><label>Lettre active (pour peindre)</label>
+          <select id="activeLetter"></select>
+        </div>
+        <div class="row"><label>Mode affectation directe</label><input id="assignMode" type="checkbox" /></div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <h2>🎨 Palette (auto & éditable)</h2>
+    <div class="paletteList" id="paletteList"></div>
+    <div class="row" style="gap:8px;margin-top:10px">
+      <button class="btn ghost" id="addColor">+ Ajouter une couleur (recalcule)</button>
+      <button class="btn sub" id="pngBtn">Télécharger PNG</button>
+      <button class="btn ghost" id="csvBtn">Exporter CSV lettres</button>
+    </div>
+
+    <div class="footer">
+      Astuce : règle colonnes/lignes pour que l’image reste reconnaissable. Imprime en PDF via le menu du navigateur.
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>🖼️ Aperçu</h2>
+    <div id="origWrap"><canvas id="origCanvas"></canvas></div>
+    <div class="grid" id="previewGrid">
+      <div>
+        <canvas id="gridCanvas"></canvas>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div id="rightPane">
+        <canvas id="colorCanvas"></canvas>
+        <div class="legend" id="legend2"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ---------- Utilitaires couleur ---------- */
+const hexToRgb = (hex) => {
+  hex = hex.replace('#','');
+  if (hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+  const num = parseInt(hex,16);
+  return [num>>16 & 255, num>>8 & 255, num & 255];
+};
+const rgbToHex = (r,g,b)=>'#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+const rgbDist2 = (a,b) => { const dr=a[0]-b[0], dg=a[1]-b[1], db=a[2]-b[2]; return dr*dr+dg*dg+db*db; };
+const isNearBlack = (r,g,b)=> (r+g+b) < 90; // seuil simple
+
+/* ---------- État ---------- */
+let palette = [];
+let loadedImg = null;               // Image originale
+const preCanvas = document.createElement('canvas'); // Image prétraitée (contours noirs)
+const preCtx = preCanvas.getContext('2d', {willReadFrequently:true});
+let lastIndexMap = null;            // indices vers palette
+let lastFileName = '';
+
+/* ---------- DOM refs ---------- */
+const file = document.getElementById('file');
+const fileName = document.getElementById('fileName');
+const cols = document.getElementById('cols');
+const rows = document.getElementById('rows');
+const cell = document.getElementById('cell');
+const gridStroke = document.getElementById('gridStroke');
+const cellStroke = document.getElementById('cellStroke');
+const cellStrokeColor = document.getElementById('cellStrokeColor');
+const preOutline = document.getElementById('preOutline');
+const paintOn = document.getElementById('paintOn');
+const dualView = document.getElementById('dualView');
+const singleViewRow = document.getElementById('singleViewRow');
+const singleView = document.getElementById('singleView');
+
+const showLetters = document.getElementById('showLetters');
+const letterFontSelect = document.getElementById('letterFontSelect');
+const letterScale = document.getElementById('letterScale');
+const letterColor = document.getElementById('letterColor');
+const letterBold = document.getElementById('letterBold');
+const letterItalic = document.getElementById('letterItalic');
+const legendSize = document.getElementById('legendSize');
+const activeLetter = document.getElementById('activeLetter');
+const assignMode = document.getElementById('assignMode');
+
+const colsOut = document.getElementById('colsOut');
+const rowsOut = document.getElementById('rowsOut');
+const paletteList = document.getElementById('paletteList');
+
+const gridCanvas = document.getElementById('gridCanvas');
+const colorCanvas = document.getElementById('colorCanvas');
+const legend = document.getElementById('legend');
+const legend2 = document.getElementById('legend2');
+const rightPane = document.getElementById('rightPane');
+const origCanvas = document.getElementById('origCanvas');
+const origCtx = origCanvas.getContext('2d', {willReadFrequently:true});
+const reprocessBtn = document.getElementById('reprocessBtn');
+
+/* ---------- Utils ---------- */
+function loadImageFromFile(f){ return new Promise((res,rej)=>{ const url = URL.createObjectURL(f); const img = new Image(); img.onload = ()=>{ URL.revokeObjectURL(url); res(img); }; img.onerror = rej; img.src = url; }); }
+
+/* ---------- Prétraitement contours noirs (sur l'image ORIGINALE) ---------- */
+function applyBlackOutlineToImageData(imgData, width, height, radius){
+  if (radius <= 0) return imgData;
+  let data = new Uint8ClampedArray(imgData.data); // copy
+  const near = (i)=> isNearBlack(data[i],data[i+1],data[i+2]);
+  for (let iter=0; iter<radius; iter++){
+    const out = new Uint8ClampedArray(data);
+    for (let y=0;y<height;y++){
+      for (let x=0;x<width;x++){
+        const i = (y*width + x)*4;
+        const a = data[i+3];
+        if (a < 10){ out[i]=255; out[i+1]=255; out[i+2]=255; out[i+3]=255; continue; }
+        if (near(i)) {
+          const P = [[1,0],[-1,0],[0,1],[0,-1]];
+          for (const [dx,dy] of P){
+            const xx=x+dx, yy=y+dy; if (xx<0||yy<0||xx>=width||yy>=height) continue;
+            const j = (yy*width + xx)*4;
+            if (!near(j)) { out[j]=0; out[j+1]=0; out[j+2]=0; out[j+3]=255; }
+          }
+        }
+      }
+    }
+    data = out;
+  }
+  return new ImageData(data, width, height);
+}
+
+function rebuildPreprocessed(){
+  // Assurer une surface valide même sans image chargée
+  if (!loadedImg || !loadedImg.width || !loadedImg.height){
+    const w=640, h=360; // placeholder synchrone
+    preCanvas.width=w; preCanvas.height=h;
+    preCtx.clearRect(0,0,w,h);
+    preCtx.fillStyle='#111827'; preCtx.fillRect(0,0,w,h);
+    preCtx.fillStyle='#94a3b8'; preCtx.font='22px system-ui'; preCtx.textAlign='center'; preCtx.textBaseline='middle';
+    preCtx.fillText('Charge une image…', w/2, h/2);
+  } else {
+    preCanvas.width = loadedImg.width; preCanvas.height = loadedImg.height;
+    preCtx.clearRect(0,0,preCanvas.width,preCanvas.height);
+    preCtx.drawImage(loadedImg,0,0);
+  }
+  const id = preCtx.getImageData(0,0,preCanvas.width,preCanvas.height);
+  const outlined = applyBlackOutlineToImageData(id, preCanvas.width, preCanvas.height, +preOutline.value);
+  preCtx.putImageData(outlined,0,0);
+}
+
+/* ---------- Palette auto (k-means déterministe) ---------- */
+function computePaletteKMeansFromPre(k){
+  const S = 64;
+  const sw = Math.max(1, Math.min(S, preCanvas.width));
+  const sh = Math.max(1, Math.min(S, preCanvas.height));
+  const samp = document.createElement('canvas'); samp.width=sw; samp.height=sh;
+  const sctx = samp.getContext('2d', {willReadFrequently:true});
+  sctx.drawImage(preCanvas,0,0,sw,sh);
+  const data = sctx.getImageData(0,0,sw,sh).data;
+  const hist = new Map();
+  for (let i=0;i<data.length;i+=4){
+    const a=data[i+3]; let r=data[i],g=data[i+1],b=data[i+2]; if (a<10){ r=g=b=255; }
+    const key=((r>>4)<<8)|((g>>4)<<4)|(b>>4);
+    hist.set(key,(hist.get(key)||0)+1);
+  }
+  const keys=[...hist.entries()].sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+  const init=[]; for(let i=0;i<k;i++){ const key = keys[i%keys.length]||0; const r=(key>>8)&0xF,g=(key>>4)&0xF,b=key&0xF; init.push([r*17,g*17,b*17]); }
+  let centers = init.map(c=>c.slice());
+  for(let iter=0; iter<8; iter++){
+    const acc = Array.from({length:k},()=>[0,0,0,0]);
+    for (let i=0;i<data.length;i+=4){
+      const a=data[i+3]; let r=data[i],g=data[i+1],b=data[i+2]; if (a<10){ r=g=b=255; }
+      let best=0, bestD=Infinity;
+      for (let c=0;c<k;c++){ const d=(r-centers[c][0])**2+(g-centers[c][1])**2+(b-centers[c][2])**2; if(d<bestD){bestD=d;best=c;} }
+      acc[best][0]+=r; acc[best][1]+=g; acc[best][2]+=b; acc[best][3]++;
+    }
+    for (let c=0;c<k;c++){
+      if (acc[c][3]>0){ centers[c][0]=Math.round(acc[c][0]/acc[c][3]); centers[c][1]=Math.round(acc[c][1]/acc[c][3]); centers[c][2]=Math.round(acc[c][2]/acc[c][3]); }
+    }
+  }
+  const newPal = centers.map((rgb,i)=>({hex:rgbToHex(rgb[0],rgb[1],rgb[2]), rgb:rgb, label:`Couleur ${String.fromCharCode(65+i)}`, letter:String.fromCharCode(65+i)}));
+  return newPal;
+}
+
+function rebuildPalette(k){
+  palette = computePaletteKMeansFromPre(k);
+  renderPaletteEditor();
+  refreshActiveLetterOptions();
+}
+
+/* ---------- Quantification (à partir de l'image PRÉTRAITÉE) ---------- */
+function quantizeImageToGrid(cols, rows){
+  const ratio = Math.min(preCanvas.width/cols, preCanvas.height/rows);
+  const W = Math.max(1, Math.round(preCanvas.width/ratio));
+  const H = Math.max(1, Math.round(preCanvas.height/ratio));
+  const ox = Math.max(0, Math.round((W - cols)/2));
+  const oy = Math.max(0, Math.round((H - rows)/2));
+  const tmp = document.createElement('canvas'); tmp.width=W; tmp.height=H;
+  tmp.getContext('2d').drawImage(preCanvas,0,0,W,H);
+  const segment = tmp.getContext('2d', {willReadFrequently:true}).getImageData(ox, oy, cols, rows);
+  const src = segment.data;
+  const indexMap = new Array(cols*rows);
+  function nearest(rgb){ let best=0,bestD=Infinity; for (let i=0;i<palette.length;i++){ const d=rgbDist2(rgb,palette[i].rgb); if(d<bestD){bestD=d;best=i;} } return best; }
+  for(let y=0;y<rows;y++){
+    for(let x=0;x<cols;x++){
+      const idx=(y*cols+x)*4; let r=src[idx],g=src[idx+1],b=src[idx+2],a=src[idx+3]; if(a<10){ r=g=b=255; }
+      indexMap[y*cols+x]=nearest([r,g,b]);
+    }
+  }
+  return { indexMap };
+}
+
+/* ---------- Rendu ---------- */
+function drawGrid(canvas, indexMap, cols, rows, cellSize, gridStrokePx, cellStrokePx, cellStrokeColorHex, drawLetters, letterStyle, paintOn){
+  canvas.width  = cols*cellSize + (gridStrokePx?1:0);
+  canvas.height = rows*cellSize + (gridStrokePx?1:0);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  for(let y=0;y<rows;y++){
+    for(let x=0;x<cols;x++){
+      const i = y*cols + x;
+      const col = palette[indexMap[i]];
+      ctx.fillStyle = paintOn ? col.hex : '#ffffff';
+      ctx.fillRect(x*cellSize, y*cellSize, cellSize, cellSize);
+      if (cellStrokePx>0){ ctx.lineWidth = cellStrokePx; ctx.strokeStyle = cellStrokeColorHex; ctx.strokeRect(x*cellSize + 0.5, y*cellSize + 0.5, cellSize-1, cellSize-1); }
+    }
+  }
+
+  if (gridStrokePx>0){
+    ctx.strokeStyle = '#00000030'; ctx.lineWidth = gridStrokePx;
+    for(let x=0;x<=cols;x++){ ctx.beginPath(); ctx.moveTo(x*cellSize+0.5,0); ctx.lineTo(x*cellSize+0.5,rows*cellSize); ctx.stroke(); }
+    for(let y=0;y<=rows;y++){ ctx.beginPath(); ctx.moveTo(0,y*cellSize+0.5); ctx.lineTo(cols*cellSize,y*cellSize+0.5); ctx.stroke(); }
+  }
+
+  if (drawLetters){
+    const sizePx = Math.max(8, Math.floor(cellSize*(letterStyle.scale/100)));
+    const fontStr = `${letterStyle.italic? 'italic ' : ''}${letterStyle.bold? '700 ' : ''}${sizePx}px ${letterStyle.family}`;
+    const ctx2 = ctx; ctx2.fillStyle = letterStyle.color; ctx2.font = fontStr; ctx2.textAlign='center'; ctx2.textBaseline='middle';
+    for(let y=0;y<rows;y++){
+      for(let x=0;x<cols;x++){
+        const i = y*cols + x; const L = palette[indexMap[i]].letter || '?';
+        ctx2.fillText(L, x*cellSize + cellSize/2, y*cellSize + cellSize/2 + 0.4);
+      }
+    }
+  }
+}
+
+function renderLegend(el){
+  el.innerHTML='';
+  const family = letterFontSelect.value; const fsize = +legendSize.value; const bold = letterBold.checked ? '700' : '400'; const italic = letterItalic.checked ? 'italic' : 'normal';
+  palette.forEach(p=>{ const chip = document.createElement('div'); chip.className='chip'; chip.style.fontFamily = family; chip.style.fontSize = fsize+'px'; chip.style.fontWeight = bold; chip.style.fontStyle = italic; const sw = document.createElement('div'); sw.className='sw'; sw.style.background=p.hex; sw.style.borderColor = '#0002'; const txt = document.createElement('span'); txt.textContent = `${p.letter} — ${p.label}`; chip.appendChild(sw); chip.appendChild(txt); el.appendChild(chip); });
+}
+
+/* ---------- Palette UI ---------- */
+function refreshLetters(){ palette.forEach((p,i)=> p.letter = String.fromCharCode(65 + (i % 26)) ); }
+function refreshActiveLetterOptions(){ activeLetter.innerHTML=''; palette.forEach((p,i)=>{ const opt=document.createElement('option'); opt.value=i; opt.textContent=`${p.letter}`; activeLetter.appendChild(opt); }); }
+
+function renderPaletteEditor(){
+  paletteList.innerHTML='';
+  palette.forEach((p,idx)=>{
+    const row = document.createElement('div'); row.className='palRow';
+    const span = document.createElement('div'); span.className='letter'; span.textContent = p.letter;
+    const color = document.createElement('input'); color.type='color'; color.value=p.hex;
+    const label = document.createElement('input'); label.type='text'; label.value=p.label; label.placeholder='Libellé';
+    const rem = document.createElement('button'); rem.textContent='✕'; rem.title='Supprimer (recalcule palette)';
+
+    color.addEventListener('input',()=>{ p.hex=color.value; p.rgb=hexToRgb(p.hex); renderAll(false); });
+    label.addEventListener('input',()=>{ p.label=label.value; renderAll(false); });
+    rem.addEventListener('click',()=>{ if (palette.length>1){ rebuildPalette(palette.length-1); lastIndexMap=null; renderAll(true); } });
+
+    row.appendChild(span); row.appendChild(color); row.appendChild(label); row.appendChild(rem);
+    paletteList.appendChild(row);
+  });
+}
+
+/* ---------- Export CSV ---------- */
+function exportCSV(indexMap, cols, rows){
+  const grid = [];
+  for(let y=0;y<rows;y++){ const row=[]; for(let x=0;x<cols;x++){ const idx = indexMap[y*cols+x]; row.push(palette[idx].letter); } grid.push(row.join(';')); }
+  const blob = new Blob([grid.join('\n')], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pixel_letters.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ---------- Rendu global ---------- */
+function renderOriginal(){
+  const baseW = loadedImg && loadedImg.width ? loadedImg.width : preCanvas.width;
+  const baseH = loadedImg && loadedImg.height ? loadedImg.height : preCanvas.height;
+  const nCols=+cols.value, nRows=+rows.value, size=+cell.value;
+  const maxW=Math.max(nCols*size, 320);
+  const ratio=Math.min(maxW/Math.max(1,baseW),1);
+  origCanvas.width=Math.max(1, Math.round(baseW*ratio));
+  origCanvas.height=Math.max(1, Math.round(baseH*ratio));
+  origCtx.clearRect(0,0,origCanvas.width,origCanvas.height);
+  origCtx.drawImage(loadedImg && loadedImg.width? loadedImg : preCanvas,0,0,origCanvas.width,origCanvas.height);
+}
+
+function recomputeIndexMap(){ const q = quantizeImageToGrid(+cols.value, +rows.value); lastIndexMap = q.indexMap; }
+
+function renderAll(recomputeIndex){
+  renderOriginal();
+  if (recomputeIndex || !lastIndexMap){ recomputeIndexMap(); }
+  const letterStyle = { family: letterFontSelect.value, scale: +letterScale.value, color: letterColor.value, bold: letterBold.checked, italic: letterItalic.checked };
+  if (dualView.checked){
+    rightPane.classList.remove('hide');
+    drawGrid(gridCanvas, lastIndexMap, +cols.value, +rows.value, +cell.value, +gridStroke.value, +cellStroke.value, cellStrokeColor.value, showLetters.checked, letterStyle, paintOn.checked);
+    drawGrid(colorCanvas, lastIndexMap, +cols.value, +rows.value, +cell.value, +gridStroke.value, +cellStroke.value, cellStrokeColor.value, false,               letterStyle, paintOn.checked);
+  } else {
+    rightPane.classList.add('hide');
+    const letters = singleView.value==='letters';
+    drawGrid(gridCanvas, lastIndexMap, +cols.value, +rows.value, +cell.value, +gridStroke.value, +cellStroke.value, cellStrokeColor.value, letters && showLetters.checked, letterStyle, paintOn.checked);
+  }
+  renderLegend(legend); if (dualView.checked){ renderLegend(legend2); } else { legend2.innerHTML=''; }
+}
+
+/* ---------- Affectation directe d'une case ---------- */
+function setupPainting(){
+  function handleClick(ev){ if (!assignMode.checked) return; const rect=gridCanvas.getBoundingClientRect(); const x=Math.floor((ev.clientX-rect.left)/+cell.value); const y=Math.floor((ev.clientY-rect.top)/+cell.value); const colsN=+cols.value, rowsN=+rows.value; if (x<0||y<0||x>=colsN||y>=rowsN) return; lastIndexMap[y*colsN+x] = +activeLetter.value; renderAll(false); }
+  gridCanvas.addEventListener('click', handleClick);
+}
+
+/* ---------- Events ---------- */
+file.addEventListener('change', async (e)=>{ if (e.target.files && e.target.files[0]){ lastFileName = e.target.files[0].name; fileName.textContent = lastFileName; loadedImg = await loadImageFromFile(e.target.files[0]); rebuildPreprocessed(); rebuildPalette(Math.max(2, palette.length||9)); lastIndexMap=null; renderAll(true); file.value=''; } });
+
+preOutline.addEventListener('input', ()=>{ rebuildPreprocessed(); lastIndexMap=null; renderAll(true); });
+reprocessBtn.addEventListener('click', ()=>{ lastIndexMap=null; renderAll(true); });
+
+cols.addEventListener('input', ()=>{ colsOut.textContent=cols.value; lastIndexMap=null; renderAll(true); });
+rows.addEventListener('input', ()=>{ rowsOut.textContent=rows.value; lastIndexMap=null; renderAll(true); });
+
+[cell,gridStroke,cellStroke,cellStrokeColor,paintOn,dualView,singleView,showLetters,letterFontSelect,letterScale,letterColor,letterBold,letterItalic,legendSize].forEach(el=> el.addEventListener('input', ()=>{ renderAll(false); }));
+
+dualView.addEventListener('input', ()=>{ singleViewRow.classList.toggle('hide', dualView.checked); renderAll(false); });
+
+const addBtn = document.getElementById('addColor');
+addBtn.addEventListener('click', ()=>{ rebuildPalette(palette.length+1); lastIndexMap=null; renderAll(true); });
+
+document.getElementById('pngBtn').addEventListener('click', ()=>{
+  const gap = 24;
+  if (dualView.checked){
+    const w = Math.max(gridCanvas.width, colorCanvas.width);
+    const h = gridCanvas.height + gap + colorCanvas.height;
+    const big = document.createElement('canvas'); big.width=w; big.height=h; const bctx = big.getContext('2d');
+    bctx.fillStyle='#ffffff'; bctx.fillRect(0,0,w,h); bctx.drawImage(gridCanvas,0,0); bctx.drawImage(colorCanvas,0,gridCanvas.height+gap);
+    const link=document.createElement('a'); link.download='pixelart_fiche.png'; link.href=big.toDataURL('image/png'); link.click();
+  } else {
+    const link=document.createElement('a'); link.download='pixelart_fiche.png'; link.href=gridCanvas.toDataURL('image/png'); link.click();
+  }
+});
+
+document.getElementById('csvBtn').addEventListener('click', ()=>{ if (lastIndexMap){ exportCSV(lastIndexMap, +cols.value, +rows.value); } });
+
+setupPainting();
+
+/* ---------- Self-tests (console) ---------- */
+(function runSelfTests(){
+  try{
+    // 1. utilitaires
+    console.assert(JSON.stringify(hexToRgb('#000')) === JSON.stringify([0,0,0]), 'hexToRgb #000');
+    console.assert(JSON.stringify(hexToRgb('#abcdef')) === JSON.stringify([171,205,239]), 'hexToRgb #abcdef');
+
+    // 2. rebuildPreprocessed doit fournir une surface > 0 même sans image
+    rebuildPreprocessed();
+    console.assert(preCanvas.width>0 && preCanvas.height>0, 'preCanvas has size');
+
+    // 3. k-means et quantize ne doivent pas planter
+    const pal3 = computePaletteKMeansFromPre(3);
+    console.assert(Array.isArray(pal3) && pal3.length===3, 'palette length 3');
+    palette = pal3; renderPaletteEditor(); refreshActiveLetterOptions();
+    const q = quantizeImageToGrid(8,8); // petite grille
+    console.assert(q.indexMap.length===64, 'indexMap 8x8');
+
+    // 4. déterminisme palette
+    const before = computePaletteKMeansFromPre(3).map(p=>p.hex).join(',');
+    const after  = computePaletteKMeansFromPre(3).map(p=>p.hex).join(',');
+    console.assert(before===after, 'Palette determinism');
+
+    console.log('[SELF-TESTS] OK');
+  }catch(e){ console.error('[SELF-TESTS] FAILED', e); }
+})();
+
+// Init (palette par défaut au premier rendu sans image)
+rebuildPreprocessed(); rebuildPalette(9); renderAll(true);
+</script>
+</body>
+</html>
+
