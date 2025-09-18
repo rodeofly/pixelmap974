@@ -7,7 +7,7 @@
 
 Un générateur 100% front (HTML/JS/CSS) pour fabriquer des fiches **Pixel-Art pédagogiques** (Cycle 3) : quantification d’image, palette automatique, prétraitement des **contours noirs**, édition des lettres en grille, export **PNG** et **CSV**.
 
-![Aperçu](docs/screenshot.png)
+![Aperçu](screenshot.png)
 
 ---
 
@@ -28,7 +28,7 @@ Un générateur 100% front (HTML/JS/CSS) pour fabriquer des fiches **Pixel-Art p
 ## 🚀 Utilisation
 
 ### En ligne
-- Ouvre la **démo** : **https://USER.github.io/pixel-art-c3/**
+- Ouvre la **démo** : **vzhttps://github.com/rodeofly/pixelmap974/pixelmap974.html**
 
 ### En local
 - Ouvre simplement `index.html` dans le navigateur  
